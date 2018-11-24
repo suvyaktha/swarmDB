@@ -109,10 +109,10 @@ namespace bzn
         send_new_config_prepare(std::shared_ptr<bzn::pbft> pbft, bzn::peer_address_t node, std::shared_ptr<pbft_operation> op)
         {
             pbft_msg prepare;
-            prepare.set_view(op->view);
-            prepare.set_sequence(op->sequence);
+            prepare.set_view(op->get_view());
+            prepare.set_sequence(op->get_sequence());
             prepare.set_type(PBFT_MSG_PREPARE);
-            prepare.set_request_hash(op->request_hash);
+            prepare.set_request_hash(op->get_request_hash());
 
             auto wmsg = wrap_pbft_msg(prepare);
             wmsg.set_sender(node.uuid);
@@ -123,10 +123,10 @@ namespace bzn
         send_new_config_commit(std::shared_ptr<bzn::pbft> pbft, bzn::peer_address_t node, std::shared_ptr<pbft_operation> op)
         {
             pbft_msg commit;
-            commit.set_view(op->view);
-            commit.set_sequence(op->sequence);
+            commit.set_view(op->get_view());
+            commit.set_sequence(op->get_sequence());
             commit.set_type(PBFT_MSG_COMMIT);
-            commit.set_request_hash(op->request_hash);
+            commit.set_request_hash(op->get_request_hash());
 
             auto wmsg = wrap_pbft_msg(commit);
             wmsg.set_sender(node.uuid);
