@@ -119,26 +119,63 @@ crypto::verify(const bzn_envelope& msg)
     std::string signature = msg.signature();
     char* sig_ptr = signature.data();
 
-    bool result =
-            // Reconstruct the PEM file in memory (this is awkward, but it avoids dealing with EC specifics)
-            (0 < BIO_write(bio.get(), PEM_PREFIX.c_str(), PEM_PREFIX.length()))
-            && (0 < BIO_write(bio.get(), msg.sender().c_str(), msg.sender().length()))
-            && (0 < BIO_write(bio.get(), PEM_SUFFIX.c_str(), PEM_SUFFIX.length()))
+    bool result = true;
 
-            // Parse the PEM string to get the public key the message is allegedly from
-            && (pubkey = EC_KEY_ptr_t(PEM_read_bio_EC_PUBKEY(bio.get(), NULL, NULL, NULL), &EC_KEY_free))
-            && (1 == EC_KEY_check_key(pubkey.get()))
-            && (1 == EVP_PKEY_set1_EC_KEY(key.get(), pubkey.get()))
+    // Reconstruct the PEM file in memory (this is awkward, but it avoids dealing with EC specifics)
+    if(result && !(0 < BIO_write(bio.get(), PEM_PREFIX.c_str(), PEM_PREFIX.length())))
+    {
+        LOG(error) << "Failed to write PEM prefix to BIO?";
+        result = false;
+    }
+    if(result && !(0 < BIO_write(bio.get(), msg.sender().c_str(), msg.sender().length())))
+    {
+        LOG(error) << "Failed to write pubkey to BIO?";
+        result = false;
+    }
+    if(result && !(0 < BIO_write(bio.get(), PEM_SUFFIX.c_str(), PEM_SUFFIX.length())))
+    {
+        LOG(error) << "Failed to write PEM suffix to BIO?";
+        result = false;
+    }
 
-            // Perform the signature validation
-            && (1 == EVP_DigestVerifyInit(context.get(), NULL, EVP_sha512(), NULL, key.get()))
-            && (1 == EVP_DigestVerifyUpdate(context.get(), msg_text.c_str(), msg_text.length()))
-            && (1 == EVP_DigestVerifyFinal(context.get(), reinterpret_cast<unsigned char*>(sig_ptr), msg.signature().length()));
+    // Parse the PEM string to get the public key the message is allegedly from
+    if(result && !(pubkey = EC_KEY_ptr_t(PEM_read_bio_EC_PUBKEY(bio.get(), NULL, NULL, NULL), &EC_KEY_free)))
+    {
+        LOG(error) << "Failed to read public key from sender";
+        result = false;
+    }
+    if(result && !(1 == EC_KEY_check_key(pubkey.get())))
+    {
+        LOG(error) << "EC_KEY_check_key returned false";
+        result = false;
+    }
+    if(result && !(1 == EVP_PKEY_set1_EC_KEY(key.get(), pubkey.get())))
+    {
+        LOG(error) << "Failed to construct EVP_PKEY from EC_KEY";
+        result = false;
+    }
+
+    // Perform the signature validation
+    if(result && !(1 == EVP_DigestVerifyInit(context.get(), NULL, EVP_sha512(), NULL, key.get())))
+    {
+        LOG(error) << "Failed to setup EVP context?";
+        result = false;
+    }
+    if(result && !(1 == EVP_DigestVerifyUpdate(context.get(), msg_text.c_str(), msg_text.length())))
+    {
+        LOG(error) << "DigestVerifyUpdate failed?";
+        result = false;
+    }
+    if(result && !(1 == EVP_DigestVerifyFinal(context.get(), reinterpret_cast<unsigned char*>(sig_ptr), msg.signature().length())))
+    {
+        LOG(error) << "DigestVerifyFinal returned false (signature rejected)";
+        result = false;
+    }
 
     /* Any errors here can be attributed to a bad (potentially malicious) incoming message, and we we should not
      * pollute our own logs with them (but we still have to clear the error state)
      */
-    ERR_clear_error();
+    this->log_openssl_errors();
 
     return result;
 }
