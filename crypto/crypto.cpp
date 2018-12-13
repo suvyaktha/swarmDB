@@ -95,6 +95,8 @@ crypto::deterministic_serialize(const bzn_envelope& msg)
         result += (std::to_string(token.length()) + "|" + token);
     }
 
+    LOG(info) << result;
+
     return result;
 }
 

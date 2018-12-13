@@ -223,6 +223,11 @@ main(int argc, const char* argv[])
 
         // startup...
         auto crypto = std::make_shared<bzn::crypto>(options);
+        bzn_envelope env;
+        env.set_database_msg("");
+        LOG(info) << env.DebugString();
+        LOG(info) << crypto->sign(env);
+        LOG(info) << env.DebugString();
         auto chaos = std::make_shared<bzn::chaos>(io_context, options);
         auto websocket = std::make_shared<bzn::beast::websocket>();
         auto node = std::make_shared<bzn::node>(io_context, websocket, chaos, options->get_ws_idle_timeout(), boost::asio::ip::tcp::endpoint{options->get_listener()}, crypto, options);
