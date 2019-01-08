@@ -46,6 +46,8 @@ namespace bzn
 
         void send_message_str(const boost::asio::ip::tcp::endpoint& ep, std::shared_ptr<bzn::encoded_message> msg, bool close_session) override;
 
+        void send_message_over_channel(const bzn::peer_address_t& peer, std::shared_ptr<bzn::encoded_message> msg) override;
+
     private:
         FRIEND_TEST(node, test_that_registered_message_handler_is_invoked);
         FRIEND_TEST(node, test_that_wrongly_signed_messages_are_dropped);
@@ -72,6 +74,8 @@ namespace bzn
 
         std::shared_ptr<bzn::crypto_base> crypto;
         std::shared_ptr<bzn::options_base> options;
+
+        std::unordered_map<std::string, std::shared_ptr<bzn::session_base>> sessions;
     };
 
 } // bzn

@@ -15,6 +15,7 @@
 #include <include/bluzelle.hpp>
 #include <node/node.hpp>
 #include <node/session.hpp>
+#include <utils/make_endpoint.hpp>
 
 using namespace bzn;
 
@@ -233,5 +234,73 @@ node::send_message(const boost::asio::ip::tcp::endpoint& ep, std::shared_ptr<bzn
         this->crypto->sign(*msg);
     }
 
-    this->send_message_str(ep, std::make_shared<std::string>(msg->SerializeAsString()), close_session);
+    auto msg2 = std::make_shared<std::string>(msg->SerializeAsString());
+    this->send_message_str(ep, msg2, close_session);
+}
+
+void
+node::send_message_over_channel(const bzn::peer_address_t& peer, std::shared_ptr<bzn::encoded_message> msg)
+{
+    auto ep = bzn::make_endpoint(peer);
+    auto key = peer.host + ":" + std::to_string(peer.port);
+
+    if (this->sessions.find(key) != this->sessions.end() && this->sessions[key]->is_open())
+    {
+        this->sessions[key]->send_datagram(msg);
+    }
+    else
+    {
+        std::shared_ptr<bzn::asio::tcp_socket_base> socket = this->io_context->make_unique_tcp_socket();
+        socket->async_connect(
+                ep, [self = shared_from_this(), socket, ep, msg, key](const boost::system::error_code& ec)
+                {
+                    if (ec)
+                    {
+                        LOG(error) << "failed to connect to: " << ep.address().to_string() << ":" << ep.port() << " - "
+                                   << ec.message();
+                        return;
+                    }
+
+                    std::shared_ptr<bzn::beast::websocket_stream_base>
+                            ws = self->websocket->make_unique_websocket_stream(socket->get_tcp_socket());
+
+                    ws->async_handshake(
+                            ep.address().to_string(), "/", [self, ws, msg, key](const boost::system::error_code& ec)
+                            {
+                                if (ec)
+                                {
+                                    LOG(error) << "handshake failed: " << ec.message();
+
+                                    return;
+                                }
+
+                                auto session = std::make_shared<bzn::session>(
+                                        self->io_context
+                                        , ++self->session_id_counter
+                                        , ws
+                                        , self->chaos
+                                        , self->ws_idle_timeout
+                                );
+                                session->start(
+                                        std::bind(
+                                                &node::priv_msg_handler
+                                                , self
+                                                , std::placeholders::_1
+                                                , std::placeholders::_2
+                                        ), std::bind(
+                                                &node::priv_protobuf_handler
+                                                , self
+                                                , std::placeholders::_1
+                                                , std::placeholders::_2
+                                        ));
+
+                                self->sessions[key] = session;
+
+                                // send the message requested...
+                                session->send_datagram(msg);
+                            }
+                    );
+                }
+        );
+    }
 }

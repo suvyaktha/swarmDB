@@ -329,7 +329,7 @@ void
 pbft::forward_request_to_primary(const bzn_envelope& request_env)
 {
     LOG(info) << "Forwarding request to primary";
-    this->node->send_message(bzn::make_endpoint(this->get_primary()), std::make_shared<bzn_envelope>(request_env), true);
+    this->node->send_message_over_channel(this->get_primary(), std::make_shared<bzn::encoded_message>(request_env.SerializeAsString()));
 
     const bzn::hash_t req_hash = this->crypto->hash(request_env);
 
@@ -557,11 +557,11 @@ pbft::handle_set_state(const pbft_membership_msg& msg)
 void
 pbft::broadcast(const bzn_envelope& msg)
 {
-    auto msg_ptr = std::make_shared<bzn_envelope>(msg);
+    auto msg_ptr = std::make_shared<bzn::encoded_message>(msg.SerializeAsString());
 
     for (const auto& peer : this->current_peers())
     {
-        this->node->send_message(make_endpoint(peer), msg_ptr, true);
+        this->node->send_message_over_channel(peer, msg_ptr);
     }
 }
 

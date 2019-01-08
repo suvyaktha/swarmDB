@@ -18,6 +18,7 @@
 #include <node/session_base.hpp>
 #include <json/json.h>
 #include <proto/bluzelle.pb.h>
+#include <bootstrap/peer_address.hpp>
 
 
 namespace bzn
@@ -71,6 +72,8 @@ namespace bzn
          * @param close_session don't expect a response on this session
          */
         virtual void send_message_str(const boost::asio::ip::tcp::endpoint& ep, std::shared_ptr<bzn::encoded_message> msg, bool close_session) = 0;
+
+        virtual void send_message_over_channel(const bzn::peer_address_t&, std::shared_ptr<bzn::encoded_message> msg) = 0;
     };
 
 } // bzn
