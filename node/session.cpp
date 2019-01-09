@@ -58,6 +58,10 @@ session::start(bzn::message_handler handler, bzn::protobuf_handler proto_handler
             }
         );
     }
+    else
+    {
+        this->do_read();
+    }
 }
 
 
@@ -106,6 +110,8 @@ session::do_read()
             {
                 LOG(error) << "Failed to parse: " << reader.getFormattedErrorMessages();
             }
+
+            self->do_read();
         }));
 }
 
@@ -153,8 +159,6 @@ session::send_message(std::shared_ptr<bzn::encoded_message> msg, const bool end_
         this->close();
         return;
     }
-
-    this->do_read();
 }
 
 

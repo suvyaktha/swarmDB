@@ -246,10 +246,12 @@ node::send_message_over_channel(const bzn::peer_address_t& peer, std::shared_ptr
 
     if (this->sessions.find(key) != this->sessions.end() && this->sessions[key]->is_open())
     {
-        this->sessions[key]->send_datagram(msg);
+        LOG(info) << "using existing session for " << key;
+        this->sessions[key]->send_message(msg, false);
     }
     else
     {
+        LOG(info) << "making a new session for " << key;
         std::shared_ptr<bzn::asio::tcp_socket_base> socket = this->io_context->make_unique_tcp_socket();
         socket->async_connect(
                 ep, [self = shared_from_this(), socket, ep, msg, key](const boost::system::error_code& ec)
@@ -260,6 +262,8 @@ node::send_message_over_channel(const bzn::peer_address_t& peer, std::shared_ptr
                                    << ec.message();
                         return;
                     }
+
+                    LOG(info) << "connected to " << key;
 
                     std::shared_ptr<bzn::beast::websocket_stream_base>
                             ws = self->websocket->make_unique_websocket_stream(socket->get_tcp_socket());
@@ -273,6 +277,8 @@ node::send_message_over_channel(const bzn::peer_address_t& peer, std::shared_ptr
 
                                     return;
                                 }
+
+                                LOG(info) << "ws with " << key;
 
                                 auto session = std::make_shared<bzn::session>(
                                         self->io_context
@@ -297,7 +303,9 @@ node::send_message_over_channel(const bzn::peer_address_t& peer, std::shared_ptr
                                 self->sessions[key] = session;
 
                                 // send the message requested...
-                                session->send_datagram(msg);
+                                LOG(info) << "sending message";
+                                session->send_message(msg, false);
+                                LOG(info) << "sent message";
                             }
                     );
                 }
