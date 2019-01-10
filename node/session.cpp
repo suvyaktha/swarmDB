@@ -17,20 +17,20 @@
 
 namespace
 {
-    const std::chrono::seconds DEFAULT_WS_TIMEOUT_MS{10};
+    //const std::chrono::seconds DEFAULT_WS_TIMEOUT_MS{10};
 }
 
 
 using namespace bzn;
 
 
-session::session(std::shared_ptr<bzn::asio::io_context_base> io_context, const bzn::session_id session_id, std::shared_ptr<bzn::beast::websocket_stream_base> websocket, std::shared_ptr<bzn::chaos_base> chaos, const std::chrono::milliseconds& ws_idle_timeout)
+session::session(std::shared_ptr<bzn::asio::io_context_base> io_context, const bzn::session_id session_id, std::shared_ptr<bzn::beast::websocket_stream_base> websocket, std::shared_ptr<bzn::chaos_base> chaos, const std::chrono::milliseconds& /*ws_idle_timeout*/)
     : strand(io_context->make_unique_strand())
     , session_id(session_id)
     , websocket(std::move(websocket))
     , idle_timer(io_context->make_unique_steady_timer())
     , chaos(std::move(chaos))
-    , ws_idle_timeout(ws_idle_timeout.count() ? ws_idle_timeout : DEFAULT_WS_TIMEOUT_MS)
+   // , ws_idle_timeout(ws_idle_timeout.count() ? ws_idle_timeout : DEFAULT_WS_TIMEOUT_MS)
 {
 }
 
@@ -44,6 +44,7 @@ session::start(bzn::message_handler handler, bzn::protobuf_handler proto_handler
     // If we haven't completed a handshake then we are accepting one...
     if (!this->websocket->is_open())
     {
+        std::lock_guard<std::mutex> lock(this->lock);
         this->websocket->async_accept(
             [self = shared_from_this()](boost::system::error_code ec)
             {
@@ -58,6 +59,10 @@ session::start(bzn::message_handler handler, bzn::protobuf_handler proto_handler
             }
         );
     }
+    else
+    {
+        this->do_read();
+    }
 }
 
 
@@ -65,15 +70,15 @@ void
 session::do_read()
 {
     auto buffer = std::make_shared<boost::beast::multi_buffer>();
+    std::lock_guard<std::mutex> lock(this->lock);
 
-    this->start_idle_timeout();
+    //this->start_idle_timeout();
 
     // todo: strand may not be needed...
     this->websocket->async_read(*buffer,
-        this->strand->wrap(
         [self = shared_from_this(), buffer](boost::system::error_code ec, auto /*bytes_transferred*/)
         {
-            self->idle_timer->cancel();
+            //self->idle_timer->cancel();
 
             if (ec)
             {
@@ -106,7 +111,9 @@ session::do_read()
             {
                 LOG(error) << "Failed to parse: " << reader.getFormattedErrorMessages();
             }
-        }));
+
+            self->do_read();
+        });
 }
 
 
@@ -131,69 +138,92 @@ session::send_message(std::shared_ptr<bzn::encoded_message> msg, const bool end_
         return;
     }
 
-    this->idle_timer->cancel(); // kill timer for duration of write...
+    //this->idle_timer->cancel(); // kill timer for duration of write...
 
-    std::lock_guard<std::mutex> lock(this->write_lock);
+    std::lock_guard<std::mutex> lock(this->lock);
+    this->write_queue.push_back(msg);
+    if (!this->writing)
+    {
+        this->do_write();
+    }
+}
+
+void session::do_write()
+{
+    // caller holds this->lock
+    this->writing = true;
+
+    auto msg = this->write_queue.front();
+    this->write_queue.pop_front();
 
     this->websocket->get_websocket().binary(true);
+    this->websocket->async_write(boost::asio::buffer(*msg),
+        [self = shared_from_this()](boost::beast::error_code ec, size_t /*bytes*/)
+        {
+            if (ec)
+            {
+                LOG(error) << "websocket write failed: " << ec.message();
 
-    boost::beast::error_code ec;
-    this->websocket->write(boost::asio::buffer(*msg), ec);
+                self->close();
+                return;
+            }
 
-    if (ec)
-    {
-        LOG(error) << "websocket write failed: " << ec.message();
+            std::lock_guard<std::mutex> lock(self->lock);
+            if (self->write_queue.size() > 0)
+            {
+                // holding lock for do_write to manipulate the queue and call async_write
+                self->do_write();
+            }
+            else
+            {
+                self->writing = false;
+            }
 
-        this->close();
-        return;
-    }
 
-    if (end_session)
-    {
-        this->close();
-        return;
-    }
-
-    this->do_read();
+        });
 }
 
 
 void
 session::send_datagram(std::shared_ptr<bzn::encoded_message> msg)
 {
-    if (this->chaos->is_message_delayed())
-    {
-        this->chaos->reschedule_message(std::bind(&session::send_datagram, shared_from_this(), std::move(msg)));
-        return;
-    }
+    this->send_message(msg, false);
 
-    if (this->chaos->is_message_dropped())
-    {
-        return;
-    }
+//    if (this->chaos->is_message_delayed())
+//    {
+//        this->chaos->reschedule_message(std::bind(&session::send_datagram, shared_from_this(), std::move(msg)));
+//        return;
+//    }
 
-    std::lock_guard<std::mutex> lock(this->write_lock);
+//    if (this->chaos->is_message_dropped())
+//    {
+//        return;
+//    }
 
-    this->websocket->get_websocket().binary(true);
+//    std::lock_guard<std::mutex> lock(this->write_lock);
 
-    boost::beast::error_code ec;
-    this->websocket->write(boost::asio::buffer(*msg), ec);
+//    this->websocket->get_websocket().binary(true);
 
-    if (ec)
-    {
-        LOG(error) << "websocket write failed: " << ec.message();
-        this->close();
-    }
+//    boost::beast::error_code ec;
+//    this->websocket->write(boost::asio::buffer(*msg), ec);
+
+//    if (ec)
+//    {
+//        LOG(error) << "websocket write failed: " << ec.message();
+//        this->close();
+//    }
 }
 
 
 void
 session::close()
 {
-    this->idle_timer->cancel();
+    //this->idle_timer->cancel();
+    std::lock_guard<std::mutex> lock(this->lock);
 
-    if (this->websocket->is_open())
+    if (!this->closing && this->websocket->is_open())
     {
+        this->closing = true;
         this->websocket->async_close(boost::beast::websocket::close_code::normal,
             [self = shared_from_this()](auto ec)
             {
@@ -206,38 +236,38 @@ session::close()
 }
 
 
-void
-session::start_idle_timeout()
-{
-    this->idle_timer->cancel();
+//void
+//session::start_idle_timeout()
+//{
+//    this->idle_timer->cancel();
 
-    LOG(trace) << "resetting " << this->ws_idle_timeout.count() << "ms idle timer";
+//    LOG(trace) << "resetting " << this->ws_idle_timeout.count() << "ms idle timer";
 
-    this->idle_timer->expires_from_now(this->ws_idle_timeout);
+//    this->idle_timer->expires_from_now(this->ws_idle_timeout);
 
-    this->idle_timer->async_wait(
-        [self = shared_from_this()](auto ec)
-        {
-            if (!ec)
-            {
-#if 0
-                LOG(info) << "reached idle timeout -- closing session: " << ec.message();
+//    this->idle_timer->async_wait(
+//        [self = shared_from_this()](auto ec)
+//        {
+//            if (!ec)
+//            {
+//#if 0
+//                LOG(info) << "reached idle timeout -- closing session: " << ec.message();
 
-                self->websocket->async_close(boost::beast::websocket::close_code::normal,
-                    [self](auto ec)
-                    {
-                        if (ec)
-                        {
-                            LOG(error) << "failed to close websocket: " << ec.message();
-                        }
-                    });
-#else
-                LOG(info) << "reached idle timeout -- closing session disabled: " << ec.message();
-#endif
-                return;
-            }
-        });
-}
+//                self->websocket->async_close(boost::beast::websocket::close_code::normal,
+//                    [self](auto ec)
+//                    {
+//                        if (ec)
+//                        {
+//                            LOG(error) << "failed to close websocket: " << ec.message();
+//                        }
+//                    });
+//#else
+//                LOG(info) << "reached idle timeout -- closing session disabled: " << ec.message();
+//#endif
+//                return;
+//            }
+//        });
+//}
 
 bool
 session::is_open() const

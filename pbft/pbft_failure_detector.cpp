@@ -16,7 +16,7 @@
 
 namespace
 {
-    const std::chrono::milliseconds operation_timeout{std::chrono::milliseconds(10000)};
+    const std::chrono::milliseconds operation_timeout{std::chrono::milliseconds(1000000)};
 }
 
 using namespace bzn;

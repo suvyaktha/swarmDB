@@ -49,8 +49,9 @@ namespace bzn
 
     private:
         void do_read();
+        void do_write();
 
-        void start_idle_timeout();
+        //void start_idle_timeout();
 
         std::unique_ptr<bzn::asio::strand_base> strand;
         const bzn::session_id session_id;
@@ -60,11 +61,16 @@ namespace bzn
 
         std::shared_ptr<bzn::chaos_base> chaos;
 
-        const std::chrono::milliseconds ws_idle_timeout;
+        //const std::chrono::milliseconds ws_idle_timeout;
         bzn::message_handler handler;
         bzn::protobuf_handler proto_handler;
 
-        std::mutex write_lock;
+        std::mutex lock;
+
+        bool closing = false;
+        bool writing = false;
+
+        std::list<std::shared_ptr<bzn::encoded_message>> write_queue;
     };
 
 } // blz
