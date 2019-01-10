@@ -70,7 +70,7 @@ session::do_read()
 {
     auto buffer = std::make_shared<boost::beast::multi_buffer>();
 
-    this->start_idle_timeout();
+    //this->start_idle_timeout();
 
     // todo: strand may not be needed...
     this->websocket->async_read(*buffer,
