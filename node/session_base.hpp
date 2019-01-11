@@ -43,23 +43,8 @@ namespace bzn
         /**
          * Send a message to the connected node
          * @param msg message
-         * @param end_session close connection after send
          */
-        virtual void send_message(std::shared_ptr<bzn::json_message> msg, bool end_session) = 0;
-
-
-        /**
-         * Send a message to the connected node
-         * @param msg message
-         * @param end_session close connection after send
-         */
-        virtual void send_message(std::shared_ptr<bzn::encoded_message> msg, bool end_session) = 0;
-
-        /**
-         * Send a message with no expected response
-         * @param msg message
-         */
-        virtual void send_datagram(std::shared_ptr<bzn::encoded_message> msg) = 0;
+        virtual void send_message(std::shared_ptr<bzn::encoded_message> msg) = 0;
 
         /**
          * Perform an orderly shutdown of the websocket.

@@ -31,15 +31,11 @@ namespace bzn
     class session final : public bzn::session_base, public std::enable_shared_from_this<session>
     {
     public:
-        session(std::shared_ptr<bzn::asio::io_context_base> io_context, bzn::session_id session_id, std::shared_ptr<bzn::beast::websocket_stream_base> websocket, std::shared_ptr<bzn::chaos_base> chaos, const std::chrono::milliseconds& ws_idle_timeout);
+        session(std::shared_ptr<bzn::asio::io_context_base> io_context, bzn::session_id session_id, std::shared_ptr<bzn::beast::websocket_stream_base> websocket, std::shared_ptr<bzn::chaos_base> chaos);
 
         void start(bzn::message_handler handler, bzn::protobuf_handler proto_handler) override;
 
-        void send_message(std::shared_ptr<bzn::json_message> msg, bool end_session) override;
-
-        void send_message(std::shared_ptr<bzn::encoded_message> msg, bool end_session) override;
-
-        void send_datagram(std::shared_ptr<bzn::encoded_message> msg) override;
+        void send_message(std::shared_ptr<bzn::encoded_message> msg) override;
 
         void close() override;
 
@@ -49,22 +45,23 @@ namespace bzn
 
     private:
         void do_read();
+        void do_write();
+        void do_write_protected();
 
-        void start_idle_timeout();
-
-        std::unique_ptr<bzn::asio::strand_base> strand;
         const bzn::session_id session_id;
 
+        std::shared_ptr<bzn::asio::io_context_base> io_context;
         std::shared_ptr<bzn::beast::websocket_stream_base> websocket;
-        std::unique_ptr<bzn::asio::steady_timer_base> idle_timer;
-
         std::shared_ptr<bzn::chaos_base> chaos;
 
-        const std::chrono::milliseconds ws_idle_timeout;
+        std::list<std::shared_ptr<bzn::encoded_message>> write_queue;
+
         bzn::message_handler handler;
         bzn::protobuf_handler proto_handler;
 
-        std::mutex write_lock;
+        std::mutex socket_lock;
+        bool writing = false;
+        bool started = false;
     };
 
 } // blz
