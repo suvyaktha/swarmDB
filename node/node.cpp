@@ -179,39 +179,60 @@ node::send_message_str(const boost::asio::ip::tcp::endpoint& ep, std::shared_ptr
         return;
     }
 
-    std::shared_ptr<bzn::asio::tcp_socket_base> socket = this->io_context->make_unique_tcp_socket();
+    std::lock_guard<std::mutex> lock(this->session_map_lock);
+    auto key = ep.address().to_string() + ":" + std::to_string(ep.port());
+    if (this->open_sessions.find(key) == this->open_sessions.end() || !this->open_sessions.at(key)->is_open())
+    {
+        LOG(info) << "opening a new socket with " << key << " for write operation";
+        LOG(info) << "we have " << this->open_sessions.size() << " sessions";
+        if(this->open_sessions.find(key) != this->open_sessions.end())
+        {
+            LOG(info) << "found session but its closed";
+        }
+        std::shared_ptr<bzn::asio::tcp_socket_base> socket = this->io_context->make_unique_tcp_socket();
 
-    socket->async_connect(ep,
-            [self = shared_from_this(), socket, ep, msg, close_session](const boost::system::error_code& ec)
-            {
-                if (ec)
+        socket->async_connect(ep,
+                [self = shared_from_this(), socket, ep, msg, close_session, key](const boost::system::error_code& ec)
                 {
-                    LOG(error) << "failed to connect to: " << ep.address().to_string() << ":" << ep.port() << " - " << ec.message();
+                    if (ec)
+                    {
+                        LOG(error) << "failed to connect to: " << ep.address().to_string() << ":" << ep.port() << " - " << ec.message();
 
-                    return;
-                }
+                        return;
+                    }
 
-                // we've completed the handshake...
-                std::shared_ptr<bzn::beast::websocket_stream_base> ws = self->websocket->make_unique_websocket_stream(socket->get_tcp_socket());
+                    // we've completed the handshake...
+                    std::shared_ptr<bzn::beast::websocket_stream_base> ws = self->websocket->make_unique_websocket_stream(socket->get_tcp_socket());
 
-                ws->async_handshake(ep.address().to_string(), "/",
-                        [self, ws, msg, close_session](const boost::system::error_code& ec)
-                        {
-                            if (ec)
+                    ws->async_handshake(ep.address().to_string(), "/",
+                            [self, ws, msg, close_session, key](const boost::system::error_code& ec)
                             {
-                                LOG(error) << "handshake failed: " << ec.message();
+                                if (ec)
+                                {
+                                    LOG(error) << "handshake failed: " << ec.message();
 
-                                return;
-                            }
+                                    return;
+                                }
 
-                            auto session = std::make_shared<bzn::session>(self->io_context, ++self->session_id_counter, ws, self->chaos, self->ws_idle_timeout);
-                            session->start(std::bind(&node::priv_msg_handler, self, std::placeholders::_1, std::placeholders::_2),
-                                           std::bind(&node::priv_protobuf_handler, self, std::placeholders::_1, std::placeholders::_2));
-                            
-                            // send the message requested...
-                            session->send_message(msg, close_session);
-                        });
-            });
+                                auto session = std::make_shared<bzn::session>(self->io_context, ++self->session_id_counter, ws, self->chaos, self->ws_idle_timeout);
+                                session->start(std::bind(&node::priv_msg_handler, self, std::placeholders::_1, std::placeholders::_2),
+                                        std::bind(&node::priv_protobuf_handler, self, std::placeholders::_1, std::placeholders::_2));
+
+                                // send the message requested...
+                                session->send_message(msg, close_session);
+
+                                std::lock_guard<std::mutex> lock(self->session_map_lock);
+                                self->open_sessions.insert_or_assign(key, session);
+                                LOG(info) << "new socket with " << key << " established and recorded";
+                            });
+                });
+    }
+    else
+    {
+        LOG(info) << "using existing session with " << key;
+        this->open_sessions.at(key)->send_message(msg, close_session);
+    }
+
 }
 
 void

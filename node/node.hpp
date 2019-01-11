@@ -46,6 +46,7 @@ namespace bzn
 
         void send_message_str(const boost::asio::ip::tcp::endpoint& ep, std::shared_ptr<bzn::encoded_message> msg, bool close_session) override;
 
+
     private:
         FRIEND_TEST(node, test_that_registered_message_handler_is_invoked);
         FRIEND_TEST(node, test_that_wrongly_signed_messages_are_dropped);
@@ -54,6 +55,8 @@ namespace bzn
 
         void priv_msg_handler(const bzn::json_message& msg, std::shared_ptr<bzn::session_base> session);
         void priv_protobuf_handler(const bzn_envelope& msg, std::shared_ptr<bzn::session_base> session);
+
+        const std::shared_ptr<bzn::session_base>& find_session(const boost::asio::ip::tcp::endpoint& ep);
 
         std::unique_ptr<bzn::asio::tcp_acceptor_base> tcp_acceptor;
         std::shared_ptr<bzn::asio::io_context_base>   io_context;
@@ -72,6 +75,9 @@ namespace bzn
 
         std::shared_ptr<bzn::crypto_base> crypto;
         std::shared_ptr<bzn::options_base> options;
+
+        std::unordered_map<std::string, std::shared_ptr<bzn::session_base>> open_sessions;
+        std::mutex session_map_lock;
     };
 
 } // bzn

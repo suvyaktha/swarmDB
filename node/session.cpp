@@ -220,6 +220,7 @@ session::close()
 {
     //this->idle_timer->cancel();
     std::lock_guard<std::mutex> lock(this->lock);
+    LOG(info) << "why are we closing a socket ever";
 
     if (!this->closing && this->websocket->is_open())
     {
