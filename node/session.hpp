@@ -31,9 +31,8 @@ namespace bzn
     class session final : public bzn::session_base, public std::enable_shared_from_this<session>
     {
     public:
-        session(std::shared_ptr<bzn::asio::io_context_base> io_context, bzn::session_id session_id, std::shared_ptr<bzn::beast::websocket_stream_base> websocket, std::shared_ptr<bzn::chaos_base> chaos);
-
-        void start(bzn::message_handler handler, bzn::protobuf_handler proto_handler) override;
+        session(std::shared_ptr<bzn::asio::io_context_base> io_context, bzn::session_id session_id, std::shared_ptr<bzn::beast::websocket_stream_base> websocket, std::shared_ptr<bzn::chaos_base> chaos, bzn::protobuf_handler proto_handler);
+        session(std::shared_ptr<bzn::asio::io_context_base> io_context, bzn::session_id session_id, boost::asio::ip::tcp::endpoint ep, std::shared_ptr<bzn::chaos_base> chaos, bzn::protobuf_handler proto_handler);
 
         void send_message(std::shared_ptr<bzn::encoded_message> msg) override;
 
@@ -46,9 +45,11 @@ namespace bzn
     private:
         void do_read();
         void do_write();
-        void do_write_protected();
+
+        void open_connection();
 
         const bzn::session_id session_id;
+        const boost::asio::ip::tcp::endpoint ep;
 
         std::shared_ptr<bzn::asio::io_context_base> io_context;
         std::shared_ptr<bzn::beast::websocket_stream_base> websocket;
@@ -61,7 +62,8 @@ namespace bzn
 
         std::mutex socket_lock;
         bool writing = false;
-        bool started = false;
+        bool reading = false;
+        bool closing = false;
     };
 
 } // blz

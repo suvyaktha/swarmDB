@@ -18,23 +18,71 @@
 
 using namespace bzn;
 
-session::session(std::shared_ptr<bzn::asio::io_context_base> io_context, const bzn::session_id session_id, std::shared_ptr<bzn::beast::websocket_stream_base> websocket, std::shared_ptr<bzn::chaos_base> chaos)
+// accepting an incoming connection
+session::session(std::shared_ptr<bzn::asio::io_context_base> io_context, const bzn::session_id session_id, std::shared_ptr<bzn::beast::websocket_stream_base> websocket, std::shared_ptr<bzn::chaos_base> chaos, bzn::protobuf_handler handler)
     : io_context(std::move(io_context))
     , session_id(session_id)
+    , ep(std::move(ep))
     , websocket(std::move(websocket))
     , chaos(std::move(chaos))
+    , proto_handler(std::move(proto_handler))
 {
+    this->websocket->async_accept(
+            [self = shared_from_this()](boost::system::error_code ec)
+            {
+                if (ec)
+                {
+                    LOG(error) << "websocket accept failed: " << ec.message();
+                    return;
+                }
+
+                self->do_read();
+                self->do_write();
+            }
+    );
+}
+
+// initiating a connection
+session::session(std::shared_ptr<bzn::asio::io_context_base> io_context, const bzn::session_id session_id, boost::asio::ip::tcp::endpoint ep, std::shared_ptr<bzn::chaos_base> chaos, bzn::protobuf_handler handler)
+        : io_context(std::move(io_context))
+        , session_id(session_id)
+        , ep(std::move(ep))
+        , chaos(std::move(chaos))
+        , proto_handler(std::move(proto_handler))
+{
+    this->open_connection();
 }
 
 void
-session::start(bzn::message_handler handler, bzn::protobuf_handler proto_handler)
+session::open_connection()
 {
-    this->handler = std::move(handler);
-    this->proto_handler = std::move(proto_handler);
+    std::shared_ptr<bzn::asio::tcp_socket_base> socket = this->io_context->make_unique_tcp_socket();
+    socket->async_connect(this->ep,
+                          [self = shared_from_this(), socket](const boost::system::error_code& ec)
+                          {
+                              if (ec)
+                              {
+                                  LOG(error) << "failed to connect to: " << ep.address().to_string() << ":" << ep.port() << " - " << ec.message();
 
-    this->started = true;
-    this->do_read();
-    this->do_write();
+                                  return;
+                              }
+
+                              // we've completed the handshake...
+                              self->ws = self->websocket->make_unique_websocket_stream(socket->get_tcp_socket());
+                              self->ws->async_handshake(ep.address().to_string(), "/",
+                                                  [self, ws](const boost::system::error_code& ec)
+                                                  {
+                                                      if (ec)
+                                                      {
+                                                          LOG(error) << "handshake failed: " << ec.message();
+
+                                                          return;
+                                                      }
+
+                                                      self->do_read();
+                                                      self->do_write();
+                                                  });
+                          });
 }
 
 void
@@ -42,6 +90,13 @@ session::do_read()
 {
     auto buffer = std::make_shared<boost::beast::multi_buffer>();
     std::lock_guard<std::mutex> lock(this->socket_lock);
+
+    if (this->reading || !this->is_open())
+    {
+        return;
+    }
+
+    this->reading = true;
 
     this->websocket->async_read(
             *buffer, [self = shared_from_this(), buffer](boost::system::error_code ec, auto /*bytes_transferred*/)
@@ -72,6 +127,7 @@ session::do_read()
                     LOG(error) << "Failed to parse incoming message";
                 }
 
+                self->reading = false;
                 self->do_read();
             }
     );
@@ -84,7 +140,7 @@ session::do_write()
     std::lock_guard<std::mutex> lock(this->socket_lock);
 
     // at most one concurrent invocation can pass this check
-    if(this->writing || this->write_queue.empty())
+    if(this->writing || !this->is_open() || this->write_queue.empty())
     {
         return;
     }
@@ -107,6 +163,12 @@ session::do_write()
                 {
                     LOG(error) << "websocket read failed: " << ec.message();
                 }
+
+                {
+                    std::lock_guard<std::mutex> lock(this->socket_lock);
+                    this->write_queue.push_front(msg);
+                }
+
                 self->close();
                 return;
             }
@@ -128,12 +190,14 @@ session::send_message(std::shared_ptr<bzn::encoded_message> msg)
 {
     if (this->chaos->is_message_delayed())
     {
+        LOG(debug) << "chaos testing delaying message";
         this->chaos->reschedule_message(std::bind(static_cast<void(session::*)(std::shared_ptr<std::string>, const bool)>(&session::send_message), shared_from_this(), std::move(msg)));
         return;
     }
 
     if (this->chaos->is_message_dropped())
     {
+        LOG(debug) << "chaos testing dropping message";
         return;
     }
 
@@ -142,16 +206,22 @@ session::send_message(std::shared_ptr<bzn::encoded_message> msg)
         this->write_queue.push_back(msg);
     }
 
-    if (this->started)
-    {
-        this->do_write();
-    }
+    this->do_write();
+    //TODO: trigger session opening if its not open already
 }
 
 void
 session::close()
 {
+    // TODO: also re-open socket if we still have messages to send?
+
     std::lock_guard<std::mutex> lock(this->socket_lock);
+    if (this->closing)
+    {
+        return;
+    }
+
+    this->closing = true;
 
     if (this->websocket->is_open())
     {

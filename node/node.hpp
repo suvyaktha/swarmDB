@@ -34,13 +34,9 @@ namespace bzn
         node(std::shared_ptr<bzn::asio::io_context_base> io_context, std::shared_ptr<bzn::beast::websocket_base> websocket, std::shared_ptr<bzn::chaos_base> chaos, const std::chrono::milliseconds& ws_idle_timeout,
             const boost::asio::ip::tcp::endpoint& ep, std::shared_ptr<bzn::crypto_base> crypto, std::shared_ptr<bzn::options_base> options);
 
-        bool register_for_message(const std::string& msg_type, bzn::message_handler msg_handler) override;
-
         bool register_for_message(const bzn_envelope::PayloadCase type, bzn::protobuf_handler msg_handler) override;
 
         void start() override;
-
-        void send_message_json(const boost::asio::ip::tcp::endpoint& ep, std::shared_ptr<bzn::json_message> msg) override;
 
         void send_message(const boost::asio::ip::tcp::endpoint& ep, std::shared_ptr<bzn_envelope> msg, bool close_session) override;
 
@@ -52,17 +48,21 @@ namespace bzn
 
         void do_accept();
 
-        void priv_msg_handler(const bzn::json_message& msg, std::shared_ptr<bzn::session_base> session);
         void priv_protobuf_handler(const bzn_envelope& msg, std::shared_ptr<bzn::session_base> session);
+
+        std::shared_ptr<bzn::session_base> open_session(const boost::asio::ip::tcp::endpoint& ep);
+
+        std::string key_from_ep(const boost::asio::ip::tcp::endpoint& ep);
+
+        std::unordered_map<std::string, std::shared_ptr<bzn::session_base>> sessions;
+        std::mutex session_map_mutex;
 
         std::unique_ptr<bzn::asio::tcp_acceptor_base> tcp_acceptor;
         std::shared_ptr<bzn::asio::io_context_base>   io_context;
         std::unique_ptr<bzn::asio::tcp_socket_base>   acceptor_socket;
         std::shared_ptr<bzn::beast::websocket_base>   websocket;
         std::shared_ptr<bzn::chaos_base>              chaos;
-        const std::chrono::milliseconds               ws_idle_timeout;
 
-        std::unordered_map<std::string, bzn::message_handler> message_map;
         std::unordered_map<bzn_envelope::PayloadCase, bzn::protobuf_handler> protobuf_map;
         std::mutex message_map_mutex;
 

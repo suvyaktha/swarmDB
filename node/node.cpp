@@ -24,49 +24,22 @@ namespace
 }
 
 
-node::node(std::shared_ptr<bzn::asio::io_context_base> io_context, std::shared_ptr<bzn::beast::websocket_base> websocket, std::shared_ptr<chaos_base> chaos, const std::chrono::milliseconds& ws_idle_timeout,
+node::node(std::shared_ptr<bzn::asio::io_context_base> io_context, std::shared_ptr<bzn::beast::websocket_base> websocket, std::shared_ptr<chaos_base> chaos,
     const boost::asio::ip::tcp::endpoint& ep, std::shared_ptr<bzn::crypto_base> crypto, std::shared_ptr<bzn::options_base> options)
     : tcp_acceptor(io_context->make_unique_tcp_acceptor(ep))
     , io_context(std::move(io_context))
     , websocket(std::move(websocket))
     , chaos(std::move(chaos))
-    , ws_idle_timeout(ws_idle_timeout)
     , crypto(std::move(crypto))
     , options(std::move(options))
 {
 }
-
 
 void
 node::start()
 {
     std::call_once(this->start_once, &node::do_accept, this);
 }
-
-
-bool
-node::register_for_message(const std::string& msg_type, bzn::message_handler msg_handler)
-{
-    std::lock_guard<std::mutex> lock(this->message_map_mutex);
-
-    // never allow!
-    if (!msg_handler)
-    {
-        return false;
-    }
-
-    if (this->message_map.find(msg_type) != this->message_map.end())
-    {
-        LOG(debug) << msg_type << " message type already registered";
-
-        return false;
-    }
-
-    this->message_map[msg_type] = std::move(msg_handler);
-
-    return true;
-}
-
 
 bool
 node::register_for_message(const bzn_envelope::PayloadCase type, bzn::protobuf_handler msg_handler)
@@ -107,39 +80,33 @@ node::do_accept()
             else
             {
                 auto ep = self->acceptor_socket->remote_endpoint();
-
-                LOG(trace) << "connection from: " << ep.address() << ":" << ep.port();
+                auto key = this->key_from_ep(ep);
 
                 auto ws = self->websocket->make_unique_websocket_stream(
                     self->acceptor_socket->get_tcp_socket());
 
-                std::make_shared<bzn::session>(self->io_context, ++self->session_id_counter, std::move(ws), self->chaos, self->ws_idle_timeout)->start(
-                        std::bind(&node::priv_msg_handler, self, std::placeholders::_1, std::placeholders::_2),
-                        std::bind(&node::priv_protobuf_handler, self, std::placeholders::_1, std::placeholders::_2));
+                auto session = std::make_shared<bzn::session>(self->io_context, ++self->session_id_counter, ep, std::move(ws), self->chaos, std::bind(&node::priv_protobuf_handler, self, std::placeholders::_1, std::placeholders::_2));
+
+                std::lock_guard<std::mutex> lock(this->session_map_mutex);
+                if (this->sessions.find(key) == this->sessions.end())
+                {
+                    LOG(info) << "accepting new incoming connection with " << key;
+                    this->sessions.insert(std::make_pair(key, session));
+                }
+                else if (this->sessions.at(key)->is_open())
+                {
+                    LOG(info) << "accepting new incoming connection with " << key << " while we already have one?";
+                    // do not replace the existing, valid session
+                }
+                else
+                {
+                    LOG(info) << "accepting new incoming connection with " << key << "; replaces closed session";
+                    this->sessions.insert_or_assign(key, session);
+                }
             }
 
             self->do_accept();
         });
-}
-
-
-void
-node::priv_msg_handler(const Json::Value& msg, std::shared_ptr<bzn::session_base> session)
-{
-    if (msg.isMember(BZN_API_KEY))
-    {
-        std::lock_guard<std::mutex> lock(this->message_map_mutex);
-
-        if (auto it = this->message_map.find(msg[BZN_API_KEY].asString()); it != this->message_map.end())
-        {
-            it->second(msg, std::move(session));
-            return;
-        }
-    }
-
-    LOG(debug) << "no handler for:\n" << msg.toStyledString().substr(0, MAX_MESSAGE_SIZE) << "...";
-
-    session->close();
 }
 
 void
@@ -165,60 +132,27 @@ node::priv_protobuf_handler(const bzn_envelope& msg, std::shared_ptr<bzn::sessio
 }
 
 void
-node::send_message_str(const boost::asio::ip::tcp::endpoint& ep, std::shared_ptr<bzn::encoded_message> msg, bool close_session)
-{
-    if (this->chaos->is_message_delayed())
+node::send_message_str(const boost::asio::ip::tcp::endpoint& ep, std::shared_ptr<bzn::encoded_message> msg, bool close_session) {
+    std::shared_ptr<bzn::session_base> session;
     {
-        const boost::asio::ip::tcp::endpoint ep_copy = ep;
-        this->chaos->reschedule_message(std::bind(&node::send_message_str, shared_from_this(), std::move(ep_copy), std::move(msg), close_session));
-        return;
+        std::lock_guard<std::mutex> lock(this->session_map_mutex);
+        auto key = this->key_from_ep(ep);
+
+        if (this->sessions.find(key) == this->sessions.end()) {
+            auto session = std::make_shared<bzn::session_base>(this->io_context, ++this->session_id_counter, ep,
+                                                               this->chaos, std::bind(&node::priv_protobuf_handler,
+                                                                                      shared_from_this(),
+                                                                                      std::placeholders::_1,
+                                                                                      std::placeholders::_2));
+            sessions.insert(std::make_pair(key, session))
+        }
+
+        session = this->sessions.at(key);
     }
 
-    if (this->chaos->is_message_dropped())
-    {
-        return;
-    }
-
-    std::shared_ptr<bzn::asio::tcp_socket_base> socket = this->io_context->make_unique_tcp_socket();
-
-    socket->async_connect(ep,
-            [self = shared_from_this(), socket, ep, msg, close_session](const boost::system::error_code& ec)
-            {
-                if (ec)
-                {
-                    LOG(error) << "failed to connect to: " << ep.address().to_string() << ":" << ep.port() << " - " << ec.message();
-
-                    return;
-                }
-
-                // we've completed the handshake...
-                std::shared_ptr<bzn::beast::websocket_stream_base> ws = self->websocket->make_unique_websocket_stream(socket->get_tcp_socket());
-
-                ws->async_handshake(ep.address().to_string(), "/",
-                        [self, ws, msg, close_session](const boost::system::error_code& ec)
-                        {
-                            if (ec)
-                            {
-                                LOG(error) << "handshake failed: " << ec.message();
-
-                                return;
-                            }
-
-                            auto session = std::make_shared<bzn::session>(self->io_context, ++self->session_id_counter, ws, self->chaos, self->ws_idle_timeout);
-                            session->start(std::bind(&node::priv_msg_handler, self, std::placeholders::_1, std::placeholders::_2),
-                                           std::bind(&node::priv_protobuf_handler, self, std::placeholders::_1, std::placeholders::_2));
-                            
-                            // send the message requested...
-                            session->send_message(msg, close_session);
-                        });
-            });
+    session->send_message(msg);
 }
 
-void
-node::send_message_json(const boost::asio::ip::tcp::endpoint& ep, std::shared_ptr<bzn::json_message> msg)
-{
-    this->send_message_str(ep, std::make_shared<bzn::encoded_message>(msg->toStyledString()), true);
-}
 
 void
 node::send_message(const boost::asio::ip::tcp::endpoint& ep, std::shared_ptr<bzn_envelope> msg, bool close_session)
