@@ -19,13 +19,19 @@
 using namespace bzn;
 
 // accepting an incoming connection
-session::session(std::shared_ptr<bzn::asio::io_context_base> io_context, const bzn::session_id session_id, std::shared_ptr<bzn::beast::websocket_stream_base> websocket, std::shared_ptr<bzn::chaos_base> chaos, bzn::protobuf_handler handler)
-    : io_context(std::move(io_context))
-    , session_id(session_id)
+session::session(
+        std::shared_ptr<bzn::asio::io_context_base> io_context,
+        const bzn::session_id session_id,
+        std::shared_ptr<bzn::beast::websocket_stream_base> websocket,
+        std::shared_ptr<bzn::chaos_base> chaos,
+        bzn::protobuf_handler handler
+)
+    : session_id(session_id)
     , ep(std::move(ep))
+    , io_context(std::move(io_context))
     , websocket(std::move(websocket))
     , chaos(std::move(chaos))
-    , proto_handler(std::move(proto_handler))
+    , proto_handler(std::move(handler))
 {
     this->websocket->async_accept(
             [self = shared_from_this()](boost::system::error_code ec)
@@ -42,35 +48,41 @@ session::session(std::shared_ptr<bzn::asio::io_context_base> io_context, const b
     );
 }
 
-// initiating a connection
-session::session(std::shared_ptr<bzn::asio::io_context_base> io_context, const bzn::session_id session_id, boost::asio::ip::tcp::endpoint ep, std::shared_ptr<bzn::chaos_base> chaos, bzn::protobuf_handler handler)
-        : io_context(std::move(io_context))
-        , session_id(session_id)
+session::session(
+        std::shared_ptr<bzn::asio::io_context_base> io_context,
+        bzn::session_id session_id,
+        std::shared_ptr<bzn::beast::websocket_base> ws_factory,
+        boost::asio::ip::tcp::endpoint ep,
+        std::shared_ptr<bzn::chaos_base> chaos,
+        bzn::protobuf_handler proto_handler
+)
+        : session_id(session_id)
         , ep(std::move(ep))
+        , io_context(std::move(io_context))
         , chaos(std::move(chaos))
         , proto_handler(std::move(proto_handler))
 {
-    this->open_connection();
+    this->open_connection(ws_factory);
 }
 
 void
-session::open_connection()
+session::open_connection(std::shared_ptr<bzn::beast::websocket_base> ws_factory)
 {
     std::shared_ptr<bzn::asio::tcp_socket_base> socket = this->io_context->make_unique_tcp_socket();
     socket->async_connect(this->ep,
-                          [self = shared_from_this(), socket](const boost::system::error_code& ec)
+                          [self = shared_from_this(), socket, ws_factory](const boost::system::error_code& ec)
                           {
                               if (ec)
                               {
-                                  LOG(error) << "failed to connect to: " << ep.address().to_string() << ":" << ep.port() << " - " << ec.message();
+                                  LOG(error) << "failed to connect to: " << self->ep.address().to_string() << ":" << self->ep.port() << " - " << ec.message();
 
                                   return;
                               }
 
                               // we've completed the handshake...
-                              self->ws = self->websocket->make_unique_websocket_stream(socket->get_tcp_socket());
-                              self->ws->async_handshake(ep.address().to_string(), "/",
-                                                  [self, ws](const boost::system::error_code& ec)
+                              self->websocket = ws_factory->make_unique_websocket_stream(socket->get_tcp_socket());
+                              self->websocket->async_handshake(self->ep.address().to_string(), "/",
+                                                  [self, ws_factory](const boost::system::error_code& ec)
                                                   {
                                                       if (ec)
                                                       {
@@ -120,7 +132,7 @@ session::do_read()
 
                 if (proto_msg.ParseFromIstream(&ss))
                 {
-                    self->io_context->post(std::bind(self->proto_handler, self));
+                    self->io_context->post(std::bind(self->proto_handler, proto_msg, self));
                 }
                 else
                 {
@@ -165,8 +177,8 @@ session::do_write()
                 }
 
                 {
-                    std::lock_guard<std::mutex> lock(this->socket_lock);
-                    this->write_queue.push_front(msg);
+                    std::lock_guard<std::mutex> lock(self->socket_lock);
+                    self->write_queue.push_front(msg);
                 }
 
                 self->close();
@@ -182,7 +194,7 @@ session::do_write()
              */
 
             self->do_write();
-        })
+        });
 }
 
 void
@@ -191,7 +203,7 @@ session::send_message(std::shared_ptr<bzn::encoded_message> msg)
     if (this->chaos->is_message_delayed())
     {
         LOG(debug) << "chaos testing delaying message";
-        this->chaos->reschedule_message(std::bind(static_cast<void(session::*)(std::shared_ptr<std::string>, const bool)>(&session::send_message), shared_from_this(), std::move(msg)));
+        this->chaos->reschedule_message(std::bind(static_cast<void(session::*)(std::shared_ptr<std::string>l)>(&session::send_message), shared_from_this(), std::move(msg)));
         return;
     }
 

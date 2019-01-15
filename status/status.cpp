@@ -63,12 +63,6 @@ status::start()
     std::call_once(this->start_once,
         [this]()
         {
-            if (!this->node->register_for_message(STATUS_MSG,
-                std::bind(&status::handle_ws_status_messages, shared_from_this(), std::placeholders::_1, std::placeholders::_2)))
-            {
-                throw std::runtime_error("Unable to register for STATUS messages!");
-            }
-
             if (!this->node->register_for_message(bzn_envelope::kStatusRequest,
                 std::bind(&status::handle_status_request_message, shared_from_this(), std::placeholders::_1, std::placeholders::_2)))
             {
@@ -104,16 +98,17 @@ void
 status::handle_ws_status_messages(const bzn::json_message& ws_msg, std::shared_ptr<bzn::session_base> session)
 {
     auto response_msg = std::make_shared<bzn::json_message>(ws_msg);
+    bzn::json_message response;
 
-    (*response_msg)[VERSION_KEY] = SWARM_VERSION;
-    (*response_msg)[COMMIT_KEY] = SWARM_GIT_COMMIT;
-    (*response_msg)[UPTIME_KEY] = get_uptime(this->start_time);
-    (*response_msg)[MODULE_KEY] = this->query_modules();
-    (*response_msg)[PBFT_ENABLED_KEY] = this->pbft_enabled;
+    response[VERSION_KEY] = SWARM_VERSION;
+    response[COMMIT_KEY] = SWARM_GIT_COMMIT;
+    response[UPTIME_KEY] = get_uptime(this->start_time);
+    response[MODULE_KEY] = this->query_modules();
+    response[PBFT_ENABLED_KEY] = this->pbft_enabled;
 
-    LOG(debug) << response_msg->toStyledString().substr(0, MAX_MESSAGE_SIZE);
+    LOG(debug) << response.toStyledString().substr(0, MAX_MESSAGE_SIZE);
 
-    session->send_message(response_msg, false);
+    session->send_message(std::make_shared<bzn::encoded_message>(response.toStyledString()));
 }
 
 
@@ -138,5 +133,5 @@ status::handle_status_request_message(const bzn_envelope& /*msg*/, std::shared_p
     env.set_sender("placeholder for daemon's uuid"); // TODO
     // TODO: crypto
 
-    session->send_message(std::make_shared<bzn::encoded_message>(env.SerializeAsString()), false);
+    session->send_message(std::make_shared<bzn::encoded_message>(env.SerializeAsString()));
 }

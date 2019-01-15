@@ -31,16 +31,16 @@ namespace bzn
     class node final : public bzn::node_base, public std::enable_shared_from_this<node>
     {
     public:
-        node(std::shared_ptr<bzn::asio::io_context_base> io_context, std::shared_ptr<bzn::beast::websocket_base> websocket, std::shared_ptr<bzn::chaos_base> chaos, const std::chrono::milliseconds& ws_idle_timeout,
-            const boost::asio::ip::tcp::endpoint& ep, std::shared_ptr<bzn::crypto_base> crypto, std::shared_ptr<bzn::options_base> options);
+        node(std::shared_ptr<bzn::asio::io_context_base> io_context, std::shared_ptr<bzn::beast::websocket_base> websocket, std::shared_ptr<chaos_base> chaos,
+                   const boost::asio::ip::tcp::endpoint& ep, std::shared_ptr<bzn::crypto_base> crypto, std::shared_ptr<bzn::options_base> options);
 
         bool register_for_message(const bzn_envelope::PayloadCase type, bzn::protobuf_handler msg_handler) override;
 
         void start() override;
 
-        void send_message(const boost::asio::ip::tcp::endpoint& ep, std::shared_ptr<bzn_envelope> msg, bool close_session) override;
+        void send_message(const boost::asio::ip::tcp::endpoint& ep, std::shared_ptr<bzn_envelope> msg) override;
 
-        void send_message_str(const boost::asio::ip::tcp::endpoint& ep, std::shared_ptr<bzn::encoded_message> msg, bool close_session) override;
+        void send_message_str(const boost::asio::ip::tcp::endpoint& ep, std::shared_ptr<bzn::encoded_message> msg) override;
 
     private:
         FRIEND_TEST(node, test_that_registered_message_handler_is_invoked);

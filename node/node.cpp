@@ -80,20 +80,20 @@ node::do_accept()
             else
             {
                 auto ep = self->acceptor_socket->remote_endpoint();
-                auto key = this->key_from_ep(ep);
+                auto key = self->key_from_ep(ep);
 
                 auto ws = self->websocket->make_unique_websocket_stream(
                     self->acceptor_socket->get_tcp_socket());
 
-                auto session = std::make_shared<bzn::session>(self->io_context, ++self->session_id_counter, ep, std::move(ws), self->chaos, std::bind(&node::priv_protobuf_handler, self, std::placeholders::_1, std::placeholders::_2));
+                auto session = std::make_shared<bzn::session>(self->io_context, ++self->session_id_counter, std::move(ws), self->chaos, std::bind(&node::priv_protobuf_handler, self, std::placeholders::_1, std::placeholders::_2));
 
-                std::lock_guard<std::mutex> lock(this->session_map_mutex);
-                if (this->sessions.find(key) == this->sessions.end())
+                std::lock_guard<std::mutex> lock(self->session_map_mutex);
+                if (self->sessions.find(key) == self->sessions.end())
                 {
                     LOG(info) << "accepting new incoming connection with " << key;
-                    this->sessions.insert(std::make_pair(key, session));
+                    self->sessions.insert(std::make_pair(key, session));
                 }
-                else if (this->sessions.at(key)->is_open())
+                else if (self->sessions.at(key)->is_open())
                 {
                     LOG(info) << "accepting new incoming connection with " << key << " while we already have one?";
                     // do not replace the existing, valid session
@@ -101,7 +101,7 @@ node::do_accept()
                 else
                 {
                     LOG(info) << "accepting new incoming connection with " << key << "; replaces closed session";
-                    this->sessions.insert_or_assign(key, session);
+                    self->sessions.insert_or_assign(key, session);
                 }
             }
 
@@ -132,19 +132,19 @@ node::priv_protobuf_handler(const bzn_envelope& msg, std::shared_ptr<bzn::sessio
 }
 
 void
-node::send_message_str(const boost::asio::ip::tcp::endpoint& ep, std::shared_ptr<bzn::encoded_message> msg, bool close_session) {
+node::send_message_str(const boost::asio::ip::tcp::endpoint& ep, std::shared_ptr<bzn::encoded_message> msg) {
     std::shared_ptr<bzn::session_base> session;
     {
         std::lock_guard<std::mutex> lock(this->session_map_mutex);
         auto key = this->key_from_ep(ep);
 
         if (this->sessions.find(key) == this->sessions.end()) {
-            auto session = std::make_shared<bzn::session_base>(this->io_context, ++this->session_id_counter, ep,
+            auto session = std::make_shared<bzn::session>(this->io_context, ++this->session_id_counter, this->websocket, ep,
                                                                this->chaos, std::bind(&node::priv_protobuf_handler,
                                                                                       shared_from_this(),
                                                                                       std::placeholders::_1,
                                                                                       std::placeholders::_2));
-            sessions.insert(std::make_pair(key, session))
+            sessions.insert(std::make_pair(key, session));
         }
 
         session = this->sessions.at(key);
@@ -155,7 +155,7 @@ node::send_message_str(const boost::asio::ip::tcp::endpoint& ep, std::shared_ptr
 
 
 void
-node::send_message(const boost::asio::ip::tcp::endpoint& ep, std::shared_ptr<bzn_envelope> msg, bool close_session)
+node::send_message(const boost::asio::ip::tcp::endpoint& ep, std::shared_ptr<bzn_envelope> msg)
 {
     if(msg->sender().empty())
     {
@@ -167,5 +167,5 @@ node::send_message(const boost::asio::ip::tcp::endpoint& ep, std::shared_ptr<bzn
         this->crypto->sign(*msg);
     }
 
-    this->send_message_str(ep, std::make_shared<std::string>(msg->SerializeAsString()), close_session);
+    this->send_message_str(ep, std::make_shared<std::string>(msg->SerializeAsString()));
 }

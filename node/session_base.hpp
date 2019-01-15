@@ -32,15 +32,6 @@ namespace bzn
         virtual ~session_base() = default;
 
         /**
-         * Start accepting new connections
-         * @param handler callback to execute when connection is established
-         */
-        virtual void start(
-                std::function<void(const json_message&, std::shared_ptr<session_base>)> handler
-                , bzn::protobuf_handler proto_handler
-        ) = 0;
-
-        /**
          * Send a message to the connected node
          * @param msg message
          */
