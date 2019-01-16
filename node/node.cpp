@@ -169,3 +169,9 @@ node::send_message(const boost::asio::ip::tcp::endpoint& ep, std::shared_ptr<bzn
 
     this->send_message_str(ep, std::make_shared<std::string>(msg->SerializeAsString()));
 }
+
+std::string
+node::key_from_ep(const boost::asio::ip::tcp::endpoint &ep)
+{
+    return ep.address().to_string() + ":" + std::to_string(ep.port());
+}

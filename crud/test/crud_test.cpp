@@ -48,7 +48,7 @@ TEST(crud, test_that_create_sends_proper_response)
     auto session = std::make_shared<bzn::Mocksession_base>();
 
     EXPECT_CALL(*session, send_message(An<std::shared_ptr<std::string>>())).WillOnce(Invoke(
-        [&](auto msg, auto)
+        [&](auto msg)
         {
             database_response resp;
             ASSERT_TRUE(parse_env_to_db_resp(resp, *msg));
@@ -64,7 +64,7 @@ TEST(crud, test_that_create_sends_proper_response)
     msg.mutable_create_db();
 
     EXPECT_CALL(*session, send_message(An<std::shared_ptr<std::string>>())).WillOnce(Invoke(
-        [&](auto msg, auto)
+        [&](auto msg)
         {
             database_response resp;
             ASSERT_TRUE(parse_env_to_db_resp(resp, *msg));
@@ -83,7 +83,7 @@ TEST(crud, test_that_create_sends_proper_response)
     EXPECT_CALL(*mock_subscription_manager, inspect_commit(_));
 
     EXPECT_CALL(*session, send_message(An<std::shared_ptr<std::string>>())).WillOnce(Invoke(
-        [&](auto msg, auto)
+        [&](auto msg)
         {
             database_response resp;
             ASSERT_TRUE(parse_env_to_db_resp(resp, *msg));
@@ -96,7 +96,7 @@ TEST(crud, test_that_create_sends_proper_response)
 
     // fail to create same key...
     EXPECT_CALL(*session, send_message(An<std::shared_ptr<std::string>>())).WillOnce(Invoke(
-        [&](auto msg, auto)
+        [&](auto msg)
         {
             database_response resp;
             ASSERT_TRUE(parse_env_to_db_resp(resp, *msg));
@@ -111,7 +111,7 @@ TEST(crud, test_that_create_sends_proper_response)
     // fail because key is too big...
     msg.mutable_create()->set_key(std::string(bzn::MAX_KEY_SIZE+1,'*'));
     EXPECT_CALL(*session, send_message(An<std::shared_ptr<std::string>>())).WillOnce(Invoke(
-        [&](auto msg, auto)
+        [&](auto msg)
         {
             database_response resp;
             ASSERT_TRUE(parse_env_to_db_resp(resp, *msg));
@@ -126,7 +126,7 @@ TEST(crud, test_that_create_sends_proper_response)
     // fail because value is too big...
     msg.mutable_create()->set_value(std::string(bzn::MAX_VALUE_SIZE+1,'*'));
     EXPECT_CALL(*session, send_message(An<std::shared_ptr<std::string>>())).WillOnce(Invoke(
-        [&](auto msg, auto)
+        [&](auto msg)
         {
             database_response resp;
             ASSERT_TRUE(parse_env_to_db_resp(resp, *msg));
@@ -174,7 +174,7 @@ TEST(crud, test_that_read_sends_proper_response)
     // read key...
     msg.mutable_read()->set_key("key");
     EXPECT_CALL(*session, send_message(An<std::shared_ptr<std::string>>())).WillOnce(Invoke(
-        [&](auto msg, auto)
+        [&](auto msg)
         {
             database_response resp;
             ASSERT_TRUE(parse_env_to_db_resp(resp, *msg));
@@ -191,7 +191,7 @@ TEST(crud, test_that_read_sends_proper_response)
     msg.release_read();
     msg.mutable_quick_read()->set_key("key");
     EXPECT_CALL(*session, send_message(An<std::shared_ptr<std::string>>())).WillOnce(Invoke(
-        [&](auto msg, auto)
+        [&](auto msg)
         {
             database_response resp;
             ASSERT_TRUE(parse_env_to_db_resp(resp, *msg));
@@ -208,7 +208,7 @@ TEST(crud, test_that_read_sends_proper_response)
     msg.release_quick_read();
     msg.mutable_read()->set_key("invalid-key");
     EXPECT_CALL(*session, send_message(An<std::shared_ptr<std::string>>())).WillOnce(Invoke(
-        [&](auto msg, auto)
+        [&](auto msg)
         {
             database_response resp;
             ASSERT_TRUE(parse_env_to_db_resp(resp, *msg));
@@ -224,7 +224,7 @@ TEST(crud, test_that_read_sends_proper_response)
     msg.release_read();
     msg.mutable_quick_read()->set_key("invalid-key");
     EXPECT_CALL(*session, send_message(An<std::shared_ptr<std::string>>())).WillOnce(Invoke(
-        [&](auto msg, auto)
+        [&](auto msg)
         {
             database_response resp;
             ASSERT_TRUE(parse_env_to_db_resp(resp, *msg));
@@ -278,7 +278,7 @@ TEST(crud, test_that_update_sends_proper_response)
     msg.mutable_update()->set_key("key");
     msg.mutable_update()->set_value("updated");
     EXPECT_CALL(*session, send_message(An<std::shared_ptr<std::string>>())).WillOnce(Invoke(
-        [&](auto msg, auto)
+        [&](auto msg)
         {
             database_response resp;
             ASSERT_TRUE(parse_env_to_db_resp(resp, *msg));
@@ -296,7 +296,7 @@ TEST(crud, test_that_update_sends_proper_response)
     // read updated key...
     msg.mutable_read()->set_key("key");
     EXPECT_CALL(*session, send_message(An<std::shared_ptr<std::string>>())).WillOnce(Invoke(
-        [&](auto msg, auto)
+        [&](auto msg)
         {
             database_response resp;
             ASSERT_TRUE(parse_env_to_db_resp(resp, *msg));
@@ -345,7 +345,7 @@ TEST(crud, test_that_delete_sends_proper_response)
     // delete key...
     msg.mutable_delete_()->set_key("key");
     EXPECT_CALL(*session, send_message(An<std::shared_ptr<std::string>>())).WillOnce(Invoke(
-        [&](auto msg, auto)
+        [&](auto msg)
         {
             database_response resp;
             ASSERT_TRUE(parse_env_to_db_resp(resp, *msg));
@@ -360,7 +360,7 @@ TEST(crud, test_that_delete_sends_proper_response)
 
     // delete invalid key...
     EXPECT_CALL(*session, send_message(An<std::shared_ptr<std::string>>())).WillOnce(Invoke(
-        [&](auto msg, auto)
+        [&](auto msg)
         {
             database_response resp;
             ASSERT_TRUE(parse_env_to_db_resp(resp, *msg));
@@ -404,7 +404,7 @@ TEST(crud, test_that_has_sends_proper_response)
     // valid key...
     msg.mutable_has()->set_key("key");
     EXPECT_CALL(*session, send_message(An<std::shared_ptr<std::string>>())).WillOnce(Invoke(
-        [&](auto msg, auto)
+        [&](auto msg)
         {
             database_response resp;
             ASSERT_TRUE(parse_env_to_db_resp(resp, *msg));
@@ -420,7 +420,7 @@ TEST(crud, test_that_has_sends_proper_response)
     // invalid key...
     msg.mutable_has()->set_key("invalid-key");
     EXPECT_CALL(*session, send_message(An<std::shared_ptr<std::string>>())).WillOnce(Invoke(
-        [&](auto msg, auto)
+        [&](auto msg)
         {
             database_response resp;
             ASSERT_TRUE(parse_env_to_db_resp(resp, *msg));
@@ -472,7 +472,7 @@ TEST(crud, test_that_keys_sends_proper_response)
     // get keys...
     msg.mutable_keys();
     EXPECT_CALL(*session, send_message(An<std::shared_ptr<std::string>>())).WillOnce(Invoke(
-        [&](auto msg, auto)
+        [&](auto msg)
         {
             database_response resp;
             ASSERT_TRUE(parse_env_to_db_resp(resp, *msg));
@@ -492,7 +492,7 @@ TEST(crud, test_that_keys_sends_proper_response)
     // invalid uuid returns empty message...
     msg.mutable_header()->set_db_uuid("invalid-uuid");
     EXPECT_CALL(*session, send_message(An<std::shared_ptr<std::string>>())).WillOnce(Invoke(
-        [&](auto msg, auto)
+        [&](auto msg)
         {
             database_response resp;
             ASSERT_TRUE(parse_env_to_db_resp(resp, *msg));
@@ -539,7 +539,7 @@ TEST(crud, test_that_size_sends_proper_response)
     // get size...
     msg.mutable_size();
     EXPECT_CALL(*session, send_message(An<std::shared_ptr<std::string>>())).WillOnce(Invoke(
-        [&](auto msg, auto)
+        [&](auto msg)
         {
             database_response resp;
             ASSERT_TRUE(parse_env_to_db_resp(resp, *msg));
