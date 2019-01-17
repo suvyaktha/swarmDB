@@ -62,6 +62,7 @@ crud::start()
 }
 
 
+// TODO: RHN - remove session parameter
 void
 crud::handle_request(const bzn::caller_id_t& caller_id, const database_msg& request, const std::shared_ptr<bzn::session_base>& session)
 {
@@ -77,7 +78,7 @@ crud::handle_request(const bzn::caller_id_t& caller_id, const database_msg& requ
     LOG(error) << "unknown request: " << uint32_t(request.msg_case());
 }
 
-
+// TODO RHN - remove the session parameter
 void
 crud::send_response(const database_msg& request, const bzn::storage_result result,
     database_response&& response, std::shared_ptr<bzn::session_base>& session)
@@ -101,6 +102,9 @@ crud::send_response(const database_msg& request, const bzn::storage_result resul
     env.set_sender("placeholder for daemon's uuid"); // TODO
     // TODO: crypto
 
+
+
+    // TODO: RHN - instead of this, use the point of contact info in the database message header
     session->send_message(std::make_shared<std::string>(env.SerializeAsString()), false);
 }
 
@@ -170,7 +174,7 @@ crud::handle_read(const bzn::caller_id_t& /*caller_id*/, const database_msg& req
     LOG(warning) << "session no longer available. READ not executed.";
 }
 
-
+// TODO: Rich - remove session
 void
 crud::handle_update(const bzn::caller_id_t& caller_id, const database_msg& request, std::shared_ptr<bzn::session_base> session)
 {
@@ -208,6 +212,7 @@ crud::handle_update(const bzn::caller_id_t& caller_id, const database_msg& reque
 }
 
 
+// TODO: Rich - remove session
 void
 crud::handle_delete(const bzn::caller_id_t& caller_id, const database_msg& request, std::shared_ptr<bzn::session_base> session)
 {
@@ -245,6 +250,7 @@ crud::handle_delete(const bzn::caller_id_t& caller_id, const database_msg& reque
 }
 
 
+// TODO: Rich - remove session - replace with send message to point of contact
 void
 crud::handle_has(const bzn::caller_id_t& /*caller_id*/, const database_msg& request, std::shared_ptr<bzn::session_base> session)
 {
@@ -266,6 +272,7 @@ crud::handle_has(const bzn::caller_id_t& /*caller_id*/, const database_msg& requ
 }
 
 
+// TODO: Rich - remove session - replace with send message to point of contact
 void
 crud::handle_keys(const bzn::caller_id_t& /*caller_id*/, const database_msg& request, std::shared_ptr<bzn::session_base> session)
 {
@@ -291,7 +298,7 @@ crud::handle_keys(const bzn::caller_id_t& /*caller_id*/, const database_msg& req
     LOG(warning) << "session no longer available. KEYS not executed.";
 }
 
-
+// TODO: Rich - remove session - replace with send message to point of contact
 void
 crud::handle_size(const bzn::caller_id_t& /*caller_id*/, const database_msg& request, std::shared_ptr<bzn::session_base> session)
 {
@@ -314,7 +321,7 @@ crud::handle_size(const bzn::caller_id_t& /*caller_id*/, const database_msg& req
     LOG(warning) << "session no longer available. SIZE not executed.";
 }
 
-
+// TODO: Rich - remove session - replace with send message to point of contact
 void
 crud::handle_subscribe(const bzn::caller_id_t& /*caller_id*/, const database_msg& request, std::shared_ptr<bzn::session_base> session)
 {
@@ -333,7 +340,7 @@ crud::handle_subscribe(const bzn::caller_id_t& /*caller_id*/, const database_msg
     LOG(warning) << "session no longer available. SUBSCRIBE not executed.";
 }
 
-
+// TODO: Rich - remove session - replace with send message to point of contact
 void
 crud::handle_unsubscribe(const bzn::caller_id_t& /*caller_id*/, const database_msg& request, std::shared_ptr<bzn::session_base> session)
 {
@@ -353,7 +360,7 @@ crud::handle_unsubscribe(const bzn::caller_id_t& /*caller_id*/, const database_m
     LOG(warning) << "session no longer available. UNSUBSCRIBE not executed.";
 }
 
-
+// TODO: Rich - remove session - replace with send message to point of contact
 void
 crud::handle_create_db(const bzn::caller_id_t& caller_id, const database_msg& request, std::shared_ptr<bzn::session_base> session)
 {
@@ -380,7 +387,7 @@ crud::handle_create_db(const bzn::caller_id_t& caller_id, const database_msg& re
     LOG(warning) << "session no longer available. CREATE DB response not sent.";
 }
 
-
+// TODO: Rich - remove session - replace with send message to point of contact
 void
 crud::handle_delete_db(const bzn::caller_id_t& caller_id, const database_msg& request, std::shared_ptr<bzn::session_base> session)
 {
@@ -414,7 +421,7 @@ crud::handle_delete_db(const bzn::caller_id_t& caller_id, const database_msg& re
     LOG(warning) << "session no longer available. DELETE DB response not sent.";
 }
 
-
+// TODO: Rich - remove session - replace with send message to point of contact
 void
 crud::handle_has_db(const bzn::caller_id_t& /*caller_id*/, const database_msg& request, std::shared_ptr<bzn::session_base> session)
 {
@@ -435,7 +442,7 @@ crud::handle_has_db(const bzn::caller_id_t& /*caller_id*/, const database_msg& r
     LOG(warning) << "session no longer available. HAS DB not executed.";
 }
 
-
+// TODO: Rich - remove session - replace with send message to point of contact
 void
 crud::handle_writers(const bzn::caller_id_t& /*caller_id*/, const database_msg& request, std::shared_ptr<bzn::session_base> session)
 {
@@ -473,7 +480,7 @@ crud::handle_writers(const bzn::caller_id_t& /*caller_id*/, const database_msg& 
     LOG(warning) << "session no longer available. WRITERS not executed.";
 }
 
-
+// TODO: Rich - remove session - replace with send message to point of contact
 void
 crud::handle_add_writers(const bzn::caller_id_t& caller_id, const database_msg& request, std::shared_ptr<bzn::session_base> session)
 {
@@ -512,7 +519,7 @@ crud::handle_add_writers(const bzn::caller_id_t& caller_id, const database_msg& 
     LOG(warning) << "session no longer available. ADD_WRITERS response not sent,";
 }
 
-
+// TODO: Rich - remove session - replace with send message to point of contact
 void
 crud::handle_remove_writers(const bzn::caller_id_t& caller_id, const database_msg& request, std::shared_ptr<bzn::session_base> session)
 {
