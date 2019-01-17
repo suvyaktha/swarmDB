@@ -34,14 +34,6 @@ namespace bzn
         session(
                 std::shared_ptr<bzn::asio::io_context_base> io_context,
                 bzn::session_id session_id,
-                std::shared_ptr<bzn::beast::websocket_stream_base> websocket,
-                std::shared_ptr<bzn::chaos_base> chaos,
-                bzn::protobuf_handler proto_handler);
-
-        session(
-                std::shared_ptr<bzn::asio::io_context_base> io_context,
-                bzn::session_id session_id,
-                std::shared_ptr<bzn::beast::websocket_base> ws_factory,
                 boost::asio::ip::tcp::endpoint ep,
                 std::shared_ptr<bzn::chaos_base> chaos,
                 bzn::protobuf_handler proto_handler);
@@ -54,11 +46,13 @@ namespace bzn
 
         bool is_open() const override;
 
+        void open_connection(std::shared_ptr<bzn::beast::websocket_base> ws_factory) override;
+        void accept_connection(std::shared_ptr<bzn::beast::websocket_stream_base> ws) override;
+
     private:
         void do_read();
         void do_write();
 
-        void open_connection(std::shared_ptr<bzn::beast::websocket_base> ws_factory);
 
         const bzn::session_id session_id;
         const boost::asio::ip::tcp::endpoint ep;

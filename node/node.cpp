@@ -82,10 +82,11 @@ node::do_accept()
                 auto ep = self->acceptor_socket->remote_endpoint();
                 auto key = self->key_from_ep(ep);
 
-                auto ws = self->websocket->make_unique_websocket_stream(
+                std::shared_ptr<bzn::beast::websocket_stream_base> ws = self->websocket->make_unique_websocket_stream(
                     self->acceptor_socket->get_tcp_socket());
 
-                auto session = std::make_shared<bzn::session>(self->io_context, ++self->session_id_counter, std::move(ws), self->chaos, std::bind(&node::priv_protobuf_handler, self, std::placeholders::_1, std::placeholders::_2));
+                auto session = std::make_shared<bzn::session>(self->io_context, ++self->session_id_counter, ep, self->chaos, std::bind(&node::priv_protobuf_handler, self, std::placeholders::_1, std::placeholders::_2));
+                session->accept_connection(std::move(ws));
 
                 std::lock_guard<std::mutex> lock(self->session_map_mutex);
                 if (self->sessions.find(key) == self->sessions.end())
@@ -139,11 +140,12 @@ node::send_message_str(const boost::asio::ip::tcp::endpoint& ep, std::shared_ptr
         auto key = this->key_from_ep(ep);
 
         if (this->sessions.find(key) == this->sessions.end()) {
-            auto session = std::make_shared<bzn::session>(this->io_context, ++this->session_id_counter, this->websocket, ep,
+            auto session = std::make_shared<bzn::session>(this->io_context, ++this->session_id_counter, ep,
                                                                this->chaos, std::bind(&node::priv_protobuf_handler,
                                                                                       shared_from_this(),
                                                                                       std::placeholders::_1,
                                                                                       std::placeholders::_2));
+            session->open_connection(this->websocket);
             sessions.insert(std::make_pair(key, session));
         }
 

@@ -18,40 +18,9 @@
 
 using namespace bzn;
 
-// accepting an incoming connection
-session::session(
-        std::shared_ptr<bzn::asio::io_context_base> io_context,
-        const bzn::session_id session_id,
-        std::shared_ptr<bzn::beast::websocket_stream_base> websocket,
-        std::shared_ptr<bzn::chaos_base> chaos,
-        bzn::protobuf_handler handler
-)
-    : session_id(session_id)
-    , ep(std::move(ep))
-    , io_context(std::move(io_context))
-    , websocket(std::move(websocket))
-    , chaos(std::move(chaos))
-    , proto_handler(std::move(handler))
-{
-    this->websocket->async_accept(
-            [self = shared_from_this()](boost::system::error_code ec)
-            {
-                if (ec)
-                {
-                    LOG(error) << "websocket accept failed: " << ec.message();
-                    return;
-                }
-
-                self->do_read();
-                self->do_write();
-            }
-    );
-}
-
 session::session(
         std::shared_ptr<bzn::asio::io_context_base> io_context,
         bzn::session_id session_id,
-        std::shared_ptr<bzn::beast::websocket_base> ws_factory,
         boost::asio::ip::tcp::endpoint ep,
         std::shared_ptr<bzn::chaos_base> chaos,
         bzn::protobuf_handler proto_handler
@@ -62,7 +31,6 @@ session::session(
         , chaos(std::move(chaos))
         , proto_handler(std::move(proto_handler))
 {
-    this->open_connection(ws_factory);
 }
 
 void
@@ -80,6 +48,8 @@ session::open_connection(std::shared_ptr<bzn::beast::websocket_base> ws_factory)
                               }
 
                               // we've completed the handshake...
+
+                              std::lock_guard<std::mutex> lock(self->socket_lock);
                               self->websocket = ws_factory->make_unique_websocket_stream(socket->get_tcp_socket());
                               self->websocket->async_handshake(self->ep.address().to_string(), "/",
                                                   [self, ws_factory](const boost::system::error_code& ec)
@@ -95,6 +65,26 @@ session::open_connection(std::shared_ptr<bzn::beast::websocket_base> ws_factory)
                                                       self->do_write();
                                                   });
                           });
+}
+
+void
+session::accept_connection(std::shared_ptr<bzn::beast::websocket_stream_base> ws)
+{
+    std::lock_guard<std::mutex> lock(this->socket_lock);
+    this->websocket = std::move(ws);
+    this->websocket->async_accept(
+            [self = shared_from_this()](boost::system::error_code ec)
+            {
+                if (ec)
+                {
+                    LOG(error) << "websocket accept failed: " << ec.message();
+                    return;
+                }
+
+                self->do_read();
+                self->do_write();
+            }
+    );
 }
 
 void
@@ -251,5 +241,5 @@ session::close()
 bool
 session::is_open() const
 {
-    return this->websocket->is_open();
+    return this->websocket && this->websocket->is_open();
 }
